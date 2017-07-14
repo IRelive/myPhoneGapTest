@@ -1,0 +1,217 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta http-equiv="X-UA-Compatible" content="ie=edge">
+    <title>Document</title>
+    <link rel="icon" type="image/x-icon" href="img/favicon.ico">
+    <style>
+        html,body{background: #000; text-align: center}
+        canvas{background: url(img/game_bg_2_hd.jpg); margin-top: 30px}
+    </style>
+    <script src="js/common.js"></script>
+    <script src="js/fish.js"></script>
+    <script src="js/cannon.js"></script>
+    <script src="js/bullet.js"></script>
+    <script src="js/fishnet.js"></script>
+    <script src="js/coin.js"></script>
+    <script src="js/cointext.js"></script>
+    <script src="js/score.js"></script>
+    <script src="js/progress.js"></script>
+    <script>
+        var resource = [
+            'fish1','fish2','fish3','fish4','fish5','fish6','fish7',
+            'cannon1','cannon2','cannon3','cannon4','cannon5','cannon6','cannon7',
+            'bullet','bottom','web','coinText','number_black',
+            'coinAni1','coinAni2'
+        ];
+        var IMG_OBJ = {};//用来保存加载好的图片对象
+        window.onload =function(){
+            var oC =document.querySelector('.cvs');
+            var gd = oC.getContext('2d');
+            //加载图片
+            loadImgs(resource,init);
+            //图片加载完后
+            function rndFishType(){
+                var t = rnd(1,70);
+                if(t < 20) return 1;
+                if(t < 35) return 2;
+                if(t < 47) return 3;
+                if(t < 57) return 4;
+                if(t < 67) return 5;
+                if(t < 69) return 6;
+                if(t < 70) return 7;
+            }
+            function init(){
+                //创建炮筒
+                var cannon = new Cannon(7);
+                var score = new Score();
+                var progress = new Progress();
+
+                var fishArr = [];
+                var bulletArr = [];
+                var netArr = [];
+                var arrCoin = [];
+                var arrCoinText = [];
+               
+                var timer = setInterval(function(){
+                    //产生鱼
+                    if(Math.random() < 0.03){//当随机数小于0.05时才产生鱼。控制鱼的出产数量
+                        if(Math.random() < 0.5){//从左边出鱼
+                            var f = new Fish({
+                                type:rndFishType(),
+                                x:-50,
+                                y:rnd(50,oC.height - 50),
+                                rotate:rnd(-45,45)
+                            });
+                        }else{//从右边出鱼
+                            var f = new Fish({
+                                type:rndFishType(),
+                                x:oC.width+50,
+                                y:rnd(50,oC.height - 50),
+                                rotate:rnd(135,225)
+                            });
+                        }
+                        fishArr.push(f);
+                    }
+                    gd.clearRect(0,0,oC.width,oC.height);
+                    //绘制活鱼
+                    for(var i = 0 ; i <fishArr.length; i++){
+                        fishArr[i].draw(gd);
+                        //鱼数量优化，若走出画布范围，移除
+                        if(fishArr[i].x < -50 || fishArr[i].x > oC.width + 50 || 
+                            fishArr[i].y < -50 || fishArr[i].y > oC.height + 50){
+                            clearInterval(fishArr[i].forwardTimer);
+                            clearInterval(fishArr[i].rockTimer);
+                            fishArr.splice(i--,1);//移除数组
+                        }                        
+                    }
+                    //绘制炮台
+                    gd.drawImage(IMG_OBJ['bottom'],
+                        0,0,765,72,
+                        0,oC.height - 70,765,72
+                    )
+                    //绘制积分
+                    score.draw(gd);
+                    //绘制关卡进度
+                    if(progress.curScore >= progress.targetScore){
+                        alert("恭喜你过关了^_^");
+                        clearInterval(timer);
+                       
+                    }else{
+                        progress.draw(gd);
+                    }
+                    
+                    //绘制炮弹
+                    for(var i = 0; i < bulletArr.length; i ++){
+                        bulletArr[i].draw(gd);
+                    }
+                    //绘制炮筒
+                    cannon.draw(gd);
+                    //绘制渔网
+                    for(var i = 0; i< netArr.length; i++){
+                        //如果渔网张开完毕就清楚掉渔网，否则绘制渔网
+                        if(netArr[i].scale < 1){
+                            netArr[i].draw(gd);
+                        }else{
+                            netArr.splice(i--,1);
+                        }
+                        
+                    }
+                    //绘制金币
+                    for(var i = 0; i < arrCoin.length; i ++){
+                        if(arrCoin[i].cur == 9 && arrCoin[i].x < 120 
+                        && arrCoin[i].x > 10 && arrCoin[i].y > 560){
+                            arrCoin.splice(i,1);
+                            score.val += arrCoinText[i].coinText;
+                            progress.curScore += arrCoinText[i].coinText;
+                            arrCoinText.splice(i--,1);
+                        }else{
+                            arrCoin[i].draw(gd);
+                            arrCoinText[i].draw(gd);                            
+                        }
+                    }
+                   
+                    //判断炮弹是否打中鱼
+                    for(var i = 0; i < fishArr.length; i ++){
+                        //判断鱼的状态是否处于可以收网的状态
+                        if(fishArr[i].liveState == 2){
+                            fishArr.splice(i--,1);
+                            continue;
+                        }else if(fishArr[i].liveState == 1){
+                            continue;
+                        }
+
+                        for(var j = 0; j <bulletArr.length; j ++){
+                            if(fishArr[i].isHited(bulletArr[j].x,bulletArr[j].y)){
+                                //打中后子弹消失,先清楚定时器
+                                clearInterval(bulletArr[j].timer);
+                                //绘制渔网
+                                var net = new Fishnet(bulletArr[j].type);
+                                net.x = fishArr[i].x;
+                                net.y =fishArr[i].y;
+                                netArr.push(net);
+
+                                bulletArr.splice(j--,1);
+                                
+                                //如果被打中,几率判断是否捕获成功
+                                if(Math.random() > 0.5){
+                                    //捕获成功,改变鱼的生存状态
+                                    fishArr[i].liveState = 1;
+                                    //产生金币
+                                    var coin = new Coin({                                        
+                                        type:fishArr[i].type,
+                                        x:fishArr[i].x,
+                                        y:fishArr[i].y
+                                    });
+                                    arrCoin.push(coin);
+                                    //产生金币分数
+                                    var ct = new CoinText({
+                                        type:fishArr[i].type,
+                                        x:fishArr[i].x,
+                                        y:fishArr[i].y
+                                    });
+                                    arrCoinText.push(ct);
+                                    
+                                }
+
+                            }
+                        }
+                        
+                    }
+                },16)
+                 //玩家交互
+                oC.onclick =function(evt){
+                    var e = evt || event;
+                    var x = e.offsetX - cannon.x;
+                    var y = cannon.y - e.offsetY ;
+                    cannon.rotate =a2d(Math.atan2(x,y));
+                    cannon.emit();
+                    //生成炮弹
+                    var blt = new Bullet(cannon.type);
+                    blt.x =cannon.x;
+                    blt.y =cannon.y;
+                    blt.rotate =cannon.rotate;
+                    bulletArr.push(blt);
+                    score.val -= cannon.type;//积分减少对应炮筒
+                }
+                document.onkeydown =function(evt){
+                    if(evt.keyCode >= 49 && evt.keyCode <= 55){
+                        cannon.type = evt.keyCode - 48;
+                    }
+                }
+            //
+            }
+           
+            
+        }
+    </script>
+</head>
+<body>
+    <audio src="data/雨的印记.mp3" autoplay loop></audio>
+    <canvas class="cvs" width="800" height="600">
+        <span>您的浏览器版本太低</span>
+    </canvas>
+</body>
+</html>
